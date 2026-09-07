@@ -6,7 +6,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../index.ht
 function boot(saved, broken = false) {
   const elements = new Map();
   const listeners = {};
-  const element = () => ({ dataset: {}, classList: { add() {} }, append() {}, setAttribute() {}, addEventListener() {}, focus() {} });
+  const element = () => ({ dataset: {}, classList: { add() {} }, append() {}, setAttribute() {}, listeners: {}, addEventListener(type, handler) { this.listeners[type] = handler; }, setPointerCapture() {}, focus() {} });
   const storage = { value: saved, getItem() { if (broken) throw Error(); return this.value; }, setItem(key, value) { if (broken) throw Error(); this.value = value; } };
   const context = vm.createContext({ localStorage: storage, document: { addEventListener(type, handler) { listeners[type] = handler; }, createElement: element, querySelectorAll: () => [], querySelector(selector) { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); } } });
   vm.runInContext(source, context);
@@ -79,4 +79,48 @@ test('spawn selects 2 below the 90% threshold and 4 at or above it', () => {
     app.run(`state.board = Array(16).fill(0); Math.random = () => ${random}; spawn()`);
     assert.deepEqual(app.run('state.board.filter(Boolean)'), [expected]);
   }
+});
+
+test('grid swipes move in all four directions and persist the result', () => {
+  for (const [dx, dy, board, destination] of [
+    [-60, 8, padded([2,2,0,0]), 0],
+    [60, -8, padded([2,2,0,0]), 3],
+    [8, -60, [2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0], 0],
+    [-8, 60, [2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0], 12]
+  ]) {
+    const app = boot(JSON.stringify({version:1, board, score:0, best:0}));
+    const events = app.elements.get('#board').listeners;
+    events.pointerdown({isPrimary:true, button:0, pointerId:1, clientX:100, clientY:100});
+    events.pointerup({pointerId:1, clientX:100+dx, clientY:100+dy});
+    assert.equal(app.run('state.score'), 4);
+    assert.equal(app.run(`state.board[${destination}]`), 4);
+    assert.equal(app.run('state.board.filter(Boolean).length'), 2);
+    assert.deepEqual(JSON.parse(app.storage.value).board, app.run('state.board'));
+    const after = app.run('state');
+    events.pointerup({pointerId:1, clientX:100+dx, clientY:100+dy});
+    assert.deepEqual(app.run('state'), after);
+  }
+});
+
+test('taps, short swipes, canceled gestures, and unrelated pointers do not move', () => {
+  const app = boot();
+  const events = app.elements.get('#board').listeners;
+  const before = app.run('state');
+  const start = {isPrimary:true, button:0, pointerId:1, clientX:100, clientY:100};
+  for (const delta of [0, 23]) {
+    events.pointerdown(start);
+    events.pointerup({pointerId:1, clientX:100+delta, clientY:100});
+  }
+  for (const type of ['pointercancel', 'lostpointercapture']) {
+    events.pointerdown(start);
+    events[type]({pointerId:1});
+    events.pointerup({pointerId:1, clientX:200, clientY:100});
+  }
+  events.pointerdown({...start, button:2});
+  events.pointerup({pointerId:1, clientX:200, clientY:100});
+  events.pointerdown(start);
+  events.pointerup({pointerId:2, clientX:200, clientY:100});
+  events.pointerdown({...start, isPrimary:false, pointerId:2});
+  events.pointerup({pointerId:1, clientX:200, clientY:100});
+  assert.deepEqual(app.run('state'), before);
 });

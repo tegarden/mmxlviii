@@ -26,6 +26,7 @@
   button:focus-visible { outline: .6cqw solid #47775d; outline-offset: .3cqw; }
   button:disabled { opacity: .35; cursor: default; }
   .board { grid-column: 2 / 4; grid-row: 2 / 4; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 1.7cqw; padding: 1.7cqw; background: #b9c0b0; border-radius: 2cqw; }
+  .board { touch-action: none; user-select: none; }
   .tile { display: grid; place-items: center; min-width: 0; border-radius: 1.1cqw; background: #cdd2c4; font-size: 7cqw; font-weight: 750; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
   .tile[data-value="2"] { background: #f1efe5; }
   .tile[data-value="4"] { background: #e7e7cb; }
@@ -160,6 +161,27 @@ function move(direction) {
   state.best = Math.max(state.best, state.score);
   const spawned = spawn();
   save(); render(spawned);
+}
+// Capture the pointer so a swipe can finish beyond the board's edge.
+let swipe = null;
+boardElement.addEventListener('pointerdown', event => {
+  if (!event.isPrimary) { swipe = null; return; }
+  if (event.button !== 0) return;
+  swipe = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  boardElement.setPointerCapture(event.pointerId);
+});
+boardElement.addEventListener('pointerup', event => {
+  if (!swipe || swipe.id !== event.pointerId) return;
+  const dx = event.clientX - swipe.x;
+  const dy = event.clientY - swipe.y;
+  swipe = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+  move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+});
+for (const type of ['pointercancel', 'lostpointercapture']) {
+  boardElement.addEventListener(type, event => {
+    if (swipe?.id === event.pointerId) swipe = null;
+  });
 }
 document.querySelectorAll('[data-direction]').forEach(button => button.addEventListener('click', () => move(button.dataset.direction)));
 document.addEventListener('keydown', event => {
