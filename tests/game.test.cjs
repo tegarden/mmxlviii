@@ -124,3 +124,15 @@ test('taps, short swipes, canceled gestures, and unrelated pointers do not move'
   events.pointerup({pointerId:1, clientX:200, clientY:100});
   assert.deepEqual(app.run('state'), before);
 });
+
+test('game-over overlay appears for a blocked board and clears on restart', () => {
+  const board = [2,4,2,4,4,2,4,2,2,4,2,4,4,2,4,2];
+  const app = boot(JSON.stringify({version:1, board, score:0, best:0}));
+  assert.equal(app.elements.get('#game-over').hidden, false);
+  app.run('newGame()');
+  assert.equal(app.elements.get('#game-over').hidden, true);
+  app.run(`state.board = ${JSON.stringify(board)}; state.board[1] = 2; render()`);
+  assert.equal(app.elements.get('#game-over').hidden, true);
+  app.run(`state.board = ${JSON.stringify(board)}; render()`);
+  assert.equal(app.elements.get('#game-over').hidden, false);
+});
